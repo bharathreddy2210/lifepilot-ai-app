@@ -3,8 +3,7 @@
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25000);
+  const controller = new AbortController();`r`n  const timeout = setTimeout(() => controller.abort(), 120000);
 
   try {
     const formData = await request.formData();
@@ -127,7 +126,7 @@ The PDF is a reference for context, not a restriction on answering. If the PDF d
       return NextResponse.json(
         {
           error:
-            "PDF processing timed out. Please try again with a smaller PDF.",
+            "PDF processing timed out after 2 minutes. Please try again.",
         },
         { status: 504 }
       );
@@ -146,4 +145,5 @@ The PDF is a reference for context, not a restriction on answering. If the PDF d
     clearTimeout(timeout);
   }
 }
+
 
