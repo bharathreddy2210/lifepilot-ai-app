@@ -15,7 +15,6 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-
     setLoading(true);
     setMessage("");
 
@@ -30,10 +29,33 @@ export default function LoginPage() {
       return;
     }
 
-    setMessage("Login successful! Redirecting...");
-
     router.push("/dashboard");
     router.refresh();
+  }
+
+  async function handleResetPassword() {
+    if (!email.trim()) {
+      setMessage("Enter your email address first.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      email.trim(),
+      {
+        redirectTo: `${window.location.origin}/reset-password`,
+      }
+    );
+
+    if (error) {
+      setMessage(error.message);
+    } else {
+      setMessage("Password reset email sent. Check your inbox.");
+    }
+
+    setLoading(false);
   }
 
   return (
@@ -66,14 +88,25 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               autoComplete="email"
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none transition focus:border-blue-500"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium">
-              Password
-            </label>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="block text-sm font-medium">
+                Password
+              </label>
+
+              <button
+                type="button"
+                onClick={handleResetPassword}
+                disabled={loading}
+                className="text-sm text-blue-400 hover:text-blue-300"
+              >
+                Forgot password?
+              </button>
+            </div>
 
             <input
               type="password"
@@ -82,16 +115,16 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
               autoComplete="current-password"
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none transition focus:border-blue-500"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-blue-600 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-xl bg-blue-600 py-3 font-semibold transition hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? "Signing In..." : "Login"}
+            {loading ? "Please wait..." : "Login"}
           </button>
 
         </form>
@@ -104,11 +137,7 @@ export default function LoginPage() {
 
         <div className="my-6 flex items-center gap-3">
           <div className="h-px flex-1 bg-slate-800" />
-
-          <span className="text-sm text-slate-500">
-            OR
-          </span>
-
+          <span className="text-sm text-slate-500">OR</span>
           <div className="h-px flex-1 bg-slate-800" />
         </div>
 
