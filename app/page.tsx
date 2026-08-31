@@ -9,8 +9,13 @@ export default function LoginPage() {
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-
-    alert("Login will be connected to the database soon.");
+<Link
+  href="/login"
+  className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
+>
+  Login
+</Link>
+   
   }
 
   return (
