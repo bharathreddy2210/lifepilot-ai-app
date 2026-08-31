@@ -1,601 +1,473 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
-type Task = {
-id: number;
-title: string;
-completed: boolean;
-};
-
-type Goal = {
-id: number;
-title: string;
-completed: boolean;
-};
-
-type User = {
-name: string;
-email: string;
-password: string;
+type Item = {
+  id: number;
+  title: string;
+  completed: boolean;
 };
 
 export default function DashboardPage() {
-const [task, setTask] = useState("");
-const [tasks, setTasks] = useState<Task[]>([]);
+  const router = useRouter();
 
-const [goal, setGoal] = useState("");
-const [goals, setGoals] = useState<Goal[]>([]);
+  const [tasks, setTasks] = useState<Item[]>([]);
+  const [goals, setGoals] = useState<Item[]>([]);
+  const [task, setTask] = useState("");
+  const [goal, setGoal] = useState("");
+  const [userName, setUserName] = useState("User");
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
 
-const [seconds, setSeconds] = useState(25 * 60);
-const [timerRunning, setTimerRunning] = useState(false);
+  async function loadDashboard() {
+    setLoading(true);
+    setErrorMessage("");
 
-const [loaded, setLoaded] = useState(false);
-const [user, setUser] = useState<User | null>(null);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-// Check login and load user
-useEffect(() => {
-const loggedIn = localStorage.getItem("lifepilot_logged_in");
-const savedUser = localStorage.getItem("lifepilot_user");
-
-
-if (loggedIn !== "true" || !savedUser) {
-  window.location.href = "/login";
-  return;
-}
-
-try {
-  setUser(JSON.parse(savedUser));
-} catch {
-  localStorage.removeItem("lifepilot_logged_in");
-  window.location.href = "/login";
-  return;
-}
-
-try {
-  const savedTasks = localStorage.getItem("lifepilot_tasks");
-  const savedGoals = localStorage.getItem("lifepilot_goals");
-
-  if (savedTasks) {
-    setTasks(JSON.parse(savedTasks));
-  }
-
-  if (savedGoals) {
-    setGoals(JSON.parse(savedGoals));
-  }
-} catch (error) {
-  console.error("Could not load saved data:", error);
-}
-
-setLoaded(true);
-
-
-}, []);
-
-// Save tasks
-useEffect(() => {
-if (!loaded) return;
-
-
-localStorage.setItem(
-  "lifepilot_tasks",
-  JSON.stringify(tasks)
-);
-
-
-}, [tasks, loaded]);
-
-// Save goals
-useEffect(() => {
-if (!loaded) return;
-
-
-localStorage.setItem(
-  "lifepilot_goals",
-  JSON.stringify(goals)
-);
-
-
-}, [goals, loaded]);
-
-// Focus timer
-useEffect(() => {
-if (!timerRunning) {
-return;
-}
-
-
-const timer = setInterval(() => {
-  setSeconds((currentSeconds) => {
-    if (currentSeconds <= 1) {
-      setTimerRunning(false);
-      return 25 * 60;
+    if (userError || !user) {
+      router.push("/login");
+      return;
     }
 
-    return currentSeconds - 1;
-  });
-}, 1000);
+    setUserName(
+      user.user_metadata?.full_name ||
+        user.email?.split("@")[0] ||
+        "User"
+    );
 
-return () => clearInterval(timer);
+    const { data: taskData, error: taskError } = await supabase
+      .from("tasks")
+      .select("id, title, completed")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
 
+    if (taskError) {
+      setErrorMessage(
+        "Tasks error: " + taskError.message
+      );
+    } else {
+      setTasks(taskData || []);
+    }
 
-}, [timerRunning]);
+    const { data: goalData, error: goalError } = await supabase
+      .from("goals")
+      .select("id, title, completed")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
 
-function addTask() {
-const title = task.trim();
+    if (goalError) {
+      setErrorMessage(
+        (current) =>
+          current
+            ? current + "\nGoals error: " + goalError.message
+            : "Goals error: " + goalError.message
+      );
+    } else {
+      setGoals(goalData || []);
+    }
 
+    setLoading(false);
+  }
 
-if (!title) return;
+  useEffect(() => {
+    loadDashboard();
+  }, []);
 
-setTasks((currentTasks) => [
-  ...currentTasks,
-  {
-    id: Date.now(),
-    title,
-    completed: false,
-  },
-]);
+  async function addTask() {
+    if (!task.trim()) return;
 
-setTask("");
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
+    if (!user) {
+      router.push("/login");
+      return;
+    }
 
-}
+    const { data, error } = await supabase
+      .from("tasks")
+      .insert({
+        user_id: user.id,
+        title: task.trim(),
+        completed: false,
+      })
+      .select("id, title, completed")
+      .single();
 
-function toggleTask(id: number) {
-setTasks((currentTasks) =>
-currentTasks.map((item) =>
-item.id === id
-? {
-...item,
-completed: !item.completed,
-}
-: item
-)
-);
-}
+    if (error) {
+      setErrorMessage("Add task error: " + error.message);
+      return;
+    }
 
-function deleteTask(id: number) {
-setTasks((currentTasks) =>
-currentTasks.filter((item) => item.id !== id)
-);
-}
+    if (data) {
+      setTasks((current) => [...current, data]);
+    }
 
-function addGoal() {
-const title = goal.trim();
+    setTask("");
+  }
 
+  async function addGoal() {
+    if (!goal.trim()) return;
 
-if (!title) return;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-setGoals((currentGoals) => [
-  ...currentGoals,
-  {
-    id: Date.now(),
-    title,
-    completed: false,
-  },
-]);
+    if (!user) {
+      router.push("/login");
+      return;
+    }
 
-setGoal("");
+    const { data, error } = await supabase
+      .from("goals")
+      .insert({
+        user_id: user.id,
+        title: goal.trim(),
+        completed: false,
+      })
+      .select("id, title, completed")
+      .single();
 
+    if (error) {
+      setErrorMessage("Add goal error: " + error.message);
+      return;
+    }
 
-}
+    if (data) {
+      setGoals((current) => [...current, data]);
+    }
 
-function toggleGoal(id: number) {
-setGoals((currentGoals) =>
-currentGoals.map((item) =>
-item.id === id
-? {
-...item,
-completed: !item.completed,
-}
-: item
-)
-);
-}
+    setGoal("");
+  }
 
-function deleteGoal(id: number) {
-setGoals((currentGoals) =>
-currentGoals.filter((item) => item.id !== id)
-);
-}
+  async function toggleTask(item: Item) {
+    const { error } = await supabase
+      .from("tasks")
+      .update({
+        completed: !item.completed,
+      })
+      .eq("id", item.id)
+      .eq(
+        "user_id",
+        (await supabase.auth.getUser()).data.user?.id
+      );
 
-function resetTimer() {
-setTimerRunning(false);
-setSeconds(25 * 60);
-}
+    if (error) {
+      setErrorMessage("Update task error: " + error.message);
+      return;
+    }
 
-function formatTime(totalSeconds: number) {
-const minutes = Math.floor(totalSeconds / 60);
-const remainingSeconds = totalSeconds % 60;
+    setTasks((current) =>
+      current.map((t) =>
+        t.id === item.id
+          ? { ...t, completed: !t.completed }
+          : t
+      )
+    );
+  }
 
+  async function toggleGoal(item: Item) {
+    const { error } = await supabase
+      .from("goals")
+      .update({
+        completed: !item.completed,
+      })
+      .eq("id", item.id)
+      .eq(
+        "user_id",
+        (await supabase.auth.getUser()).data.user?.id
+      );
 
-return (
-  String(minutes).padStart(2, "0") +
-  ":" +
-  String(remainingSeconds).padStart(2, "0")
-);
+    if (error) {
+      setErrorMessage("Update goal error: " + error.message);
+      return;
+    }
 
+    setGoals((current) =>
+      current.map((g) =>
+        g.id === item.id
+          ? { ...g, completed: !g.completed }
+          : g
+      )
+    );
+  }
 
-}
+  async function deleteTask(id: number) {
+    const { error } = await supabase
+      .from("tasks")
+      .delete()
+      .eq("id", id);
 
-function clearAllData() {
-const confirmed = window.confirm(
-"Delete all tasks and goals?"
-);
+    if (error) {
+      setErrorMessage("Delete task error: " + error.message);
+      return;
+    }
 
+    setTasks((current) =>
+      current.filter((t) => t.id !== id)
+    );
+  }
 
-if (!confirmed) return;
+  async function deleteGoal(id: number) {
+    const { error } = await supabase
+      .from("goals")
+      .delete()
+      .eq("id", id);
 
-setTasks([]);
-setGoals([]);
+    if (error) {
+      setErrorMessage("Delete goal error: " + error.message);
+      return;
+    }
 
-localStorage.removeItem("lifepilot_tasks");
-localStorage.removeItem("lifepilot_goals");
+    setGoals((current) =>
+      current.filter((g) => g.id !== id)
+    );
+  }
 
+  async function logout() {
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
-}
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <div className="text-xl">
+          Loading LifePilot...
+        </div>
+      </main>
+    );
+  }
 
-function logout() {
-localStorage.removeItem("lifepilot_logged_in");
-window.location.href = "/login";
-}
+  return (
+    <main className="min-h-screen bg-slate-950 px-6 py-8 text-white">
+      <div className="mx-auto max-w-6xl">
 
-const completedTasks = tasks.filter(
-(item) => item.completed
-).length;
+        <header className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">
+              LifePilot Dashboard
+            </h1>
 
-const completedGoals = goals.filter(
-(item) => item.completed
-).length;
+            <p className="mt-2 text-slate-400">
+              Welcome, {userName} 👋
+            </p>
+          </div>
 
-if (!loaded || !user) {
-return ( <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white"> <p className="text-slate-400">
-Loading LifePilot... </p> </main>
-);
-}
+          <button
+            onClick={logout}
+            className="rounded-xl bg-red-600 px-5 py-3 font-semibold hover:bg-red-700"
+          >
+            Logout
+          </button>
+        </header>
 
-return ( <main className="min-h-screen bg-slate-950 p-6 text-white"> <div className="mx-auto max-w-6xl">
+        {errorMessage && (
+          <div className="mb-6 whitespace-pre-wrap rounded-xl border border-red-500 bg-red-950 p-4 text-red-200">
+            <p className="font-bold">
+              Database Error
+            </p>
 
+            <p className="mt-2 text-sm">
+              {errorMessage}
+            </p>
+          </div>
+        )}
 
-    {/* Header */}
+        <div className="grid gap-6 md:grid-cols-2">
 
-    <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          {/* TASKS */}
 
-      <div>
-        <h1 className="text-3xl font-bold">
-          LifePilot Dashboard
-        </h1>
+          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
 
-        <p className="mt-2 text-slate-400">
-          Your personal productivity command center
-        </p>
-      </div>
+            <h2 className="text-2xl font-bold">
+              📝 My Tasks
+            </h2>
 
-      <div className="flex items-center gap-3">
+            <div className="mt-5 flex gap-3">
 
-        <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-2">
-          <p className="text-xs text-slate-500">
-            Welcome
-          </p>
+              <input
+                value={task}
+                onChange={(e) =>
+                  setTask(e.target.value)
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    addTask();
+                  }
+                }}
+                placeholder="Add a task..."
+                className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
+              />
 
-          <p className="font-semibold">
-            {user.name}
-          </p>
+              <button
+                onClick={addTask}
+                className="rounded-xl bg-blue-600 px-5 py-3 font-semibold hover:bg-blue-700"
+              >
+                Add
+              </button>
+
+            </div>
+
+            <div className="mt-5 space-y-3">
+
+              {tasks.length === 0 && (
+                <p className="text-slate-500">
+                  No tasks yet.
+                </p>
+              )}
+
+              {tasks.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-4"
+                >
+
+                  <input
+                    type="checkbox"
+                    checked={item.completed}
+                    onChange={() =>
+                      toggleTask(item)
+                    }
+                    className="h-5 w-5"
+                  />
+
+                  <span
+                    className={`flex-1 ${
+                      item.completed
+                        ? "line-through text-slate-500"
+                        : ""
+                    }`}
+                  >
+                    {item.title}
+                  </span>
+
+                  <button
+                    onClick={() =>
+                      deleteTask(item.id)
+                    }
+                    className="text-sm text-red-400 hover:text-red-300"
+                  >
+                    Delete
+                  </button>
+
+                </div>
+              ))}
+
+            </div>
+
+          </section>
+
+          {/* GOALS */}
+
+          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+
+            <h2 className="text-2xl font-bold">
+              🎯 My Goals
+            </h2>
+
+            <div className="mt-5 flex gap-3">
+
+              <input
+                value={goal}
+                onChange={(e) =>
+                  setGoal(e.target.value)
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    addGoal();
+                  }
+                }}
+                placeholder="Add a goal..."
+                className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-yellow-500"
+              />
+
+              <button
+                onClick={addGoal}
+                className="rounded-xl bg-yellow-600 px-5 py-3 font-semibold hover:bg-yellow-700"
+              >
+                Add
+              </button>
+
+            </div>
+
+            <div className="mt-5 space-y-3">
+
+              {goals.length === 0 && (
+                <p className="text-slate-500">
+                  No goals yet.
+                </p>
+              )}
+
+              {goals.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-4"
+                >
+
+                  <input
+                    type="checkbox"
+                    checked={item.completed}
+                    onChange={() =>
+                      toggleGoal(item)
+                    }
+                    className="h-5 w-5"
+                  />
+
+                  <span
+                    className={`flex-1 ${
+                      item.completed
+                        ? "line-through text-slate-500"
+                        : ""
+                    }`}
+                  >
+                    {item.title}
+                  </span>
+
+                  <button
+                    onClick={() =>
+                      deleteGoal(item.id)
+                    }
+                    className="text-sm text-red-400 hover:text-red-300"
+                  >
+                    Delete
+                  </button>
+
+                </div>
+              ))}
+
+            </div>
+
+          </section>
+
         </div>
 
-        <button
-          onClick={logout}
-          className="rounded-xl bg-red-600 px-4 py-3 font-semibold hover:bg-red-700"
-        >
-          Logout
-        </button>
+        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+          <h2 className="text-xl font-bold">
+            🤖 AI Assistant
+          </h2>
 
-      </div>
-
-    </header>
-
-    {/* Statistics */}
-
-    <section className="grid gap-4 sm:grid-cols-4">
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-        <p className="text-sm text-slate-400">
-          Total Tasks
-        </p>
-
-        <p className="mt-2 text-3xl font-bold">
-          {tasks.length}
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-        <p className="text-sm text-slate-400">
-          Completed Tasks
-        </p>
-
-        <p className="mt-2 text-3xl font-bold text-green-400">
-          {completedTasks}
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-        <p className="text-sm text-slate-400">
-          Total Goals
-        </p>
-
-        <p className="mt-2 text-3xl font-bold text-yellow-400">
-          {goals.length}
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-        <p className="text-sm text-slate-400">
-          Completed Goals
-        </p>
-
-        <p className="mt-2 text-3xl font-bold text-blue-400">
-          {completedGoals}
-        </p>
-      </div>
-
-    </section>
-
-    {/* Tasks */}
-
-    <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
-
-      <h2 className="text-xl font-bold">
-        📝 Add Task
-      </h2>
-
-      <div className="mt-4 flex gap-3">
-
-        <input
-          value={task}
-          onChange={(e) => setTask(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              addTask();
-            }
-          }}
-          placeholder="Enter a task..."
-          className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-        />
-
-        <button
-          onClick={addTask}
-          className="rounded-xl bg-blue-600 px-6 py-3 font-semibold hover:bg-blue-700"
-        >
-          Add Task
-        </button>
-
-      </div>
-
-      <h2 className="mt-8 text-xl font-bold">
-        My Tasks
-      </h2>
-
-      <div className="mt-4 space-y-3">
-
-        {tasks.length === 0 && (
-          <p className="text-slate-500">
-            No tasks yet.
+          <p className="mt-2 text-slate-400">
+            Ask LifePilot AI for productivity help.
           </p>
-        )}
 
-        {tasks.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950 p-4"
+          <button
+            onClick={() => router.push("/ai-agent")}
+            className="mt-4 rounded-xl bg-blue-600 px-5 py-3 font-semibold hover:bg-blue-700"
           >
-
-            <div className="flex items-center gap-3">
-
-              <input
-                type="checkbox"
-                checked={item.completed}
-                onChange={() => toggleTask(item.id)}
-                className="h-5 w-5"
-              />
-
-              <span
-                className={
-                  item.completed
-                    ? "text-slate-500 line-through"
-                    : ""
-                }
-              >
-                {item.title}
-              </span>
-
-            </div>
-
-            <button
-              onClick={() => deleteTask(item.id)}
-              className="text-red-400 hover:text-red-300"
-            >
-              Delete
-            </button>
-
-          </div>
-        ))}
+            Open AI Assistant
+          </button>
+        </section>
 
       </div>
-
-    </section>
-
-    {/* Goals */}
-
-    <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
-
-      <h2 className="text-xl font-bold">
-        🎯 Goals
-      </h2>
-
-      <p className="mt-1 text-sm text-slate-400">
-        Set goals and track your progress.
-      </p>
-
-      <div className="mt-4 flex gap-3">
-
-        <input
-          value={goal}
-          onChange={(e) => setGoal(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              addGoal();
-            }
-          }}
-          placeholder="Enter a goal..."
-          className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
-        />
-
-        <button
-          onClick={addGoal}
-          className="rounded-xl bg-blue-600 px-6 py-3 font-semibold hover:bg-blue-700"
-        >
-          Add Goal
-        </button>
-
-      </div>
-
-      <div className="mt-4 space-y-3">
-
-        {goals.length === 0 && (
-          <p className="text-slate-500">
-            No goals yet.
-          </p>
-        )}
-
-        {goals.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950 p-4"
-          >
-
-            <div className="flex items-center gap-3">
-
-              <input
-                type="checkbox"
-                checked={item.completed}
-                onChange={() => toggleGoal(item.id)}
-                className="h-5 w-5"
-              />
-
-              <span
-                className={
-                  item.completed
-                    ? "text-slate-500 line-through"
-                    : ""
-                }
-              >
-                {item.title}
-              </span>
-
-            </div>
-
-            <button
-              onClick={() => deleteGoal(item.id)}
-              className="text-red-400 hover:text-red-300"
-            >
-              Delete
-            </button>
-
-          </div>
-        ))}
-
-      </div>
-
-    </section>
-
-    {/* Focus Timer */}
-
-    <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
-
-      <h2 className="text-xl font-bold">
-        ⏱️ Focus Timer
-      </h2>
-
-      <p className="mt-1 text-sm text-slate-400">
-        25-minute productivity session
-      </p>
-
-      <div className="my-8 text-center text-7xl font-bold tracking-wider">
-        {formatTime(seconds)}
-      </div>
-
-      <div className="flex justify-center gap-3">
-
-        <button
-          onClick={() => setTimerRunning(!timerRunning)}
-          className="rounded-xl bg-green-600 px-6 py-3 font-semibold hover:bg-green-700"
-        >
-          {timerRunning ? "Pause" : "Start"}
-        </button>
-
-        <button
-          onClick={resetTimer}
-          className="rounded-xl bg-slate-700 px-6 py-3 font-semibold hover:bg-slate-600"
-        >
-          Reset
-        </button>
-
-      </div>
-
-    </section>
-
-    {/* Navigation */}
-
-    <section className="mt-8 grid gap-4 sm:grid-cols-3">
-
-      <a
-        href="/ai-agent"
-        className="rounded-2xl border border-slate-800 bg-slate-900 p-5 hover:border-blue-500"
-      >
-        <h3 className="font-bold">
-          🤖 AI Assistant
-        </h3>
-
-        <p className="mt-2 text-sm text-slate-400">
-          Ask LifePilot AI for help.
-        </p>
-      </a>
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-        <h3 className="font-bold">
-          📚 Study Planner
-        </h3>
-
-        <p className="mt-2 text-sm text-slate-400">
-          Plan your study sessions.
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-        <h3 className="font-bold">
-          📈 Productivity
-        </h3>
-
-        <p className="mt-2 text-sm text-slate-400">
-          Track your productivity.
-        </p>
-      </div>
-
-    </section>
-
-    {/* Clear Data */}
-
-    <button
-      onClick={clearAllData}
-      className="mt-8 w-full rounded-xl border border-red-900 bg-slate-900 p-3 text-red-400 hover:bg-red-950"
-    >
-      🗑️ Clear All Tasks & Goals
-    </button>
-
-  </div>
-</main>
-
-
-);
+    </main>
+  );
 }
-

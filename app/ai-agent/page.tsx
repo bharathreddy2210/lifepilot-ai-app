@@ -1,315 +1,174 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type Message = {
-role: "user" | "assistant";
-content: string;
-};
-
-type Task = {
-id: number;
-title: string;
-completed: boolean;
-};
-
-type Goal = {
-id: number;
-title: string;
-completed: boolean;
+  role: "user" | "assistant";
+  content: string;
 };
 
 export default function AIAgentPage() {
-const [messages, setMessages] = useState<Message[]>([
-{
-role: "assistant",
-content:
-"Hello! 👋 I'm LifePilot AI. I can help you with your tasks, goals, productivity, planning, studying, and general questions.",
-},
-]);
+  const [message, setMessage] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(false);
 
-const [input, setInput] = useState("");
-const [loading, setLoading] = useState(false);
+  async function sendMessage() {
+    const text = message.trim();
 
-const [tasks, setTasks] = useState<Task[]>([]);
-const [goals, setGoals] = useState<Goal[]>([]);
+    if (!text || loading) return;
 
-useEffect(() => {
-try {
-const savedTasks = localStorage.getItem("lifepilot_tasks");
-const savedGoals = localStorage.getItem("lifepilot_goals");
+    setMessages((current) => [
+      ...current,
+      {
+        role: "user",
+        content: text,
+      },
+    ]);
 
+    setMessage("");
+    setLoading(true);
 
-  if (savedTasks) {
-    setTasks(JSON.parse(savedTasks));
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: text,
+        }),
+      });
+
+      const rawText = await response.text();
+
+      let data: {
+        answer?: string;
+        error?: string;
+      };
+
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        throw new Error(
+          `Server returned invalid response (${response.status}).`
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || `Request failed (${response.status}).`
+        );
+      }
+
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content:
+            data.answer || "No answer received.",
+        },
+      ]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content:
+            error instanceof Error
+              ? `❌ ${error.message}`
+              : "❌ Something went wrong. Please try again.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  if (savedGoals) {
-    setGoals(JSON.parse(savedGoals));
-  }
-} catch (error) {
-  console.error("Could not load dashboard data:", error);
-}
+  return (
+    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
+      <div className="mx-auto flex max-w-3xl flex-col">
 
-
-}, []);
-
-async function sendMessage(customMessage?: string) {
-const text = (customMessage ?? input).trim();
-
-
-if (!text || loading) {
-  return;
-}
-
-const userMessage: Message = {
-  role: "user",
-  content: text,
-};
-
-const updatedMessages = [...messages, userMessage];
-
-setMessages(updatedMessages);
-setInput("");
-setLoading(true);
-
-try {
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messages: updatedMessages,
-      tasks,
-      goals,
-    }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      data?.error || "Server returned an invalid response."
-    );
-  }
-
-  const assistantText =
-    typeof data?.response === "string"
-      ? data.response
-      : "I couldn't generate a response.";
-
-  setMessages((currentMessages) => [
-    ...currentMessages,
-    {
-      role: "assistant",
-      content: assistantText,
-    },
-  ]);
-} catch (error) {
-  console.error("AI request error:", error);
-
-  setMessages((currentMessages) => [
-    ...currentMessages,
-    {
-      role: "assistant",
-      content:
-        error instanceof Error
-          ? "❌ " + error.message
-          : "❌ Something went wrong.",
-    },
-  ]);
-} finally {
-  setLoading(false);
-}
-
-
-}
-
-function clearChat() {
-setMessages([
-{
-role: "assistant",
-content:
-"Chat cleared. 👋 What would you like help with?",
-},
-]);
-}
-
-const completedTasks = tasks.filter(
-(task) => task.completed
-).length;
-
-const completedGoals = goals.filter(
-(goal) => goal.completed
-).length;
-
-return ( <main className="min-h-screen bg-slate-950 px-4 py-6 text-white"> <div className="mx-auto max-w-5xl">
-
-
-    {/* Header */}
-
-    <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-      <div>
         <h1 className="text-3xl font-bold">
           🤖 LifePilot AI
         </h1>
 
-        <p className="mt-1 text-slate-400">
-          Your personal AI productivity assistant
-        </p>
-      </div>
-
-      <a
-        href="/dashboard"
-        className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-center text-sm hover:border-blue-500"
-      >
-        ← Back to Dashboard
-      </a>
-
-    </header>
-
-    {/* Current Data */}
-
-    <section className="mb-6 grid gap-4 sm:grid-cols-4">
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <p className="text-sm text-slate-400">
-          Tasks
+        <p className="mt-2 text-slate-400">
+          Your personal productivity assistant
         </p>
 
-        <p className="mt-1 text-2xl font-bold">
-          {tasks.length}
-        </p>
-      </div>
+        <div className="mt-6 min-h-[500px] rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <p className="text-sm text-slate-400">
-          Completed
-        </p>
-
-        <p className="mt-1 text-2xl font-bold text-green-400">
-          {completedTasks}
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <p className="text-sm text-slate-400">
-          Goals
-        </p>
-
-        <p className="mt-1 text-2xl font-bold text-yellow-400">
-          {goals.length}
-        </p>
-      </div>
-
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <p className="text-sm text-slate-400">
-          Goals Done
-        </p>
-
-        <p className="mt-1 text-2xl font-bold text-blue-400">
-          {completedGoals}
-        </p>
-      </div>
-
-    </section>
-
-    {/* Chat */}
-
-    <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
-
-      <div className="min-h-[450px] space-y-4 p-6">
-
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={
-              message.role === "user"
-                ? "flex justify-end"
-                : "flex justify-start"
-            }
-          >
-
-            <div
-              className={
-                message.role === "user"
-                  ? "max-w-[85%] rounded-2xl bg-blue-600 px-5 py-3"
-                  : "max-w-[85%] rounded-2xl border border-slate-700 bg-slate-950 px-5 py-3"
-              }
-            >
-
-              <p className="mb-1 text-xs font-semibold opacity-60">
-                {message.role === "user"
-                  ? "You"
-                  : "LifePilot AI"}
-              </p>
-
-              <p className="whitespace-pre-wrap leading-7">
-                {message.content}
-              </p>
-
+          {messages.length === 0 && (
+            <div className="flex min-h-[400px] items-center justify-center text-center text-slate-500">
+              <div>
+                <div className="text-5xl">🤖</div>
+                <p className="mt-4">
+                  Ask LifePilot anything about productivity,
+                  study, planning, or time management.
+                </p>
+              </div>
             </div>
+          )}
 
+          <div className="space-y-4">
+            {messages.map((item, index) => (
+              <div
+                key={index}
+                className={`rounded-xl p-4 ${
+                  item.role === "user"
+                    ? "ml-8 bg-blue-600"
+                    : "mr-8 bg-slate-800"
+                }`}
+              >
+                <div className="mb-1 text-xs font-semibold text-slate-300">
+                  {item.role === "user"
+                    ? "You"
+                    : "LifePilot AI"}
+                </div>
+
+                <div className="whitespace-pre-wrap">
+                  {item.content}
+                </div>
+              </div>
+            ))}
+
+            {loading && (
+              <div className="mr-8 rounded-xl bg-slate-800 p-4">
+                <span className="animate-pulse">
+                  LifePilot AI is thinking...
+                </span>
+              </div>
+            )}
           </div>
-        ))}
 
-        {loading && (
-          <div className="flex justify-start">
-            <div className="rounded-2xl border border-slate-700 bg-slate-950 px-5 py-3 text-slate-400">
-              LifePilot AI is thinking... 🤔
-            </div>
-          </div>
-        )}
+        </div>
 
-      </div>
-
-      {/* Input */}
-
-      <div className="border-t border-slate-800 p-4">
-
-        <div className="flex gap-3">
+        <div className="mt-4 flex gap-3">
 
           <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
+              if (e.key === "Enter") {
                 sendMessage();
               }
             }}
-            placeholder="Ask LifePilot AI anything..."
             disabled={loading}
-            className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500 disabled:opacity-50"
+            placeholder="Ask LifePilot AI..."
+            className="flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 outline-none focus:border-blue-500 disabled:opacity-50"
           />
 
           <button
-            onClick={() => sendMessage()}
-            disabled={loading || !input.trim()}
+            onClick={sendMessage}
+            disabled={loading || !message.trim()}
             className="rounded-xl bg-blue-600 px-6 py-3 font-semibold hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "..." : "Send 🚀"}
+            {loading ? "..." : "Send"}
           </button>
 
         </div>
 
-        <button
-          onClick={clearChat}
-          className="mt-3 text-sm text-slate-500 hover:text-red-400"
-        >
-          🗑️ Clear Chat
-        </button>
-
       </div>
-
-    </section>
-
-  </div>
-</main>
-
-
-);
+    </main>
+  );
 }
-

@@ -1,53 +1,48 @@
-
 "use client";
 
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function Login() {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
 
-    const savedUser = localStorage.getItem("lifepilot_user");
+    setLoading(true);
+    setMessage("");
 
-    if (!savedUser) {
-      setError("No account found. Please create an account first.");
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (error) {
+      setMessage(error.message);
+      setLoading(false);
       return;
     }
 
-    try {
-      const user = JSON.parse(savedUser);
+    setMessage("Login successful! Redirecting...");
 
-      if (
-        email.trim().toLowerCase() !==
-          String(user.email).toLowerCase() ||
-        password !== user.password
-      ) {
-        setError("Invalid email or password.");
-        return;
-      }
-
-      localStorage.setItem("lifepilot_logged_in", "true");
-
-      router.push("/dashboard");
-    } catch {
-      setError("Unable to read account information.");
-    }
+    router.push("/dashboard");
+    router.refresh();
   }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-white">
       <div className="w-full max-w-md">
 
+        {/* Logo */}
         <div className="mb-8 text-center">
           <div className="text-5xl">🤖</div>
 
@@ -60,10 +55,12 @@ export default function Login() {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8">
+        {/* Login Card */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-xl">
 
           <form onSubmit={handleLogin} className="space-y-5">
 
+            {/* Email */}
             <div>
               <label className="mb-2 block text-sm font-medium">
                 Email
@@ -79,6 +76,7 @@ export default function Login() {
               />
             </div>
 
+            {/* Password */}
             <div>
               <label className="mb-2 block text-sm font-medium">
                 Password
@@ -94,10 +92,11 @@ export default function Login() {
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 text-white outline-none focus:border-blue-500"
                 />
 
+                {/* Show / Hide Password */}
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xl text-slate-400 hover:text-white"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xl"
                   aria-label={
                     showPassword ? "Hide password" : "Show password"
                   }
@@ -107,21 +106,25 @@ export default function Login() {
               </div>
             </div>
 
-            {error && (
-              <div className="rounded-xl border border-red-900 bg-red-950 p-3 text-sm text-red-300">
-                ❌ {error}
-              </div>
-            )}
-
+            {/* Login Button */}
             <button
               type="submit"
-              className="w-full rounded-xl bg-blue-600 py-3 font-semibold hover:bg-blue-700"
+              disabled={loading}
+              className="w-full rounded-xl bg-blue-600 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Sign In
+              {loading ? "Signing In..." : "Sign In"}
             </button>
 
           </form>
 
+          {/* Message */}
+          {message && (
+            <div className="mt-5 rounded-xl border border-slate-700 bg-slate-950 p-3 text-center text-sm text-slate-300">
+              {message}
+            </div>
+          )}
+
+          {/* Divider */}
           <div className="my-6 flex items-center gap-3">
             <div className="h-px flex-1 bg-slate-800" />
 
@@ -132,18 +135,22 @@ export default function Login() {
             <div className="h-px flex-1 bg-slate-800" />
           </div>
 
+          {/* Google */}
           <button
             type="button"
-            onClick={() =>
-              setError("Google login will be connected in a later step.")
-            }
-            className="w-full rounded-xl border border-slate-700 py-3 font-medium hover:bg-slate-800"
+            disabled
+            className="w-full rounded-xl border border-slate-700 py-3 font-medium text-slate-400"
           >
             Continue with Google
           </button>
 
+          <p className="mt-2 text-center text-xs text-slate-600">
+            Google login will be connected later.
+          </p>
+
         </div>
 
+        {/* Register */}
         <p className="mt-6 text-center text-sm text-slate-500">
           Don't have an account?{" "}
           <Link
@@ -154,6 +161,7 @@ export default function Login() {
           </Link>
         </p>
 
+        {/* Home */}
         <div className="mt-6 text-center">
           <Link
             href="/"
@@ -167,5 +175,3 @@ export default function Login() {
     </main>
   );
 }
-
-
