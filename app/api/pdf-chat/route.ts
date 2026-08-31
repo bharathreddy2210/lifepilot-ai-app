@@ -1,9 +1,11 @@
 ﻿import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25000);
+
   try {
     const formData = await request.formData();
     const file = formData.get("file");
@@ -40,26 +42,66 @@ export async function POST(request: Request) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-    });
-
-    const result = await model.generateContent([
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
       {
-        inlineData: {
-          data: buffer.toString("base64"),
-          mimeType: "application/pdf",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
         },
-      },
-      {
-        text: "Read this PDF carefully and return a concise summary of its main contents. Include the important topics, key points, and conclusions.",
-      },
-    ]);
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  inline_data: {
+                    mime_type: "application/pdf",
+                    data: buffer.toString("base64"),
+                  },
+                },
+                {
+                  text: "Read this PDF carefully. Give me a clear summary of the important topics, key points, definitions, and conclusions. Keep the answer organized and easy to understand.",
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 1024,
+          },
+        }),
+      }
+    );
 
-    const response = result.response;
-    const answer = response.text();
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Gemini PDF error:", data);
+
+      return NextResponse.json(
+        {
+          error:
+            data?.error?.message ||
+            `Gemini API error (${response.status})`,
+        },
+        { status: response.status }
+      );
+    }
+
+    const answer = data?.candidates?.[0]?.content?.parts
+      ?.map((part: { text?: string }) => part.text || "")
+      .join("")
+      .trim();
+
+    if (!answer) {
+      return NextResponse.json(
+        { error: "Gemini returned an empty answer." },
+        { status: 502 }
+      );
+    }
 
     return NextResponse.json({
       answer,
@@ -67,6 +109,16 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("PDF chat error:", error);
+
+    if (error instanceof Error && error.name === "AbortError") {
+      return NextResponse.json(
+        {
+          error:
+            "PDF processing timed out. Please try again with a smaller PDF.",
+        },
+        { status: 504 }
+      );
+    }
 
     return NextResponse.json(
       {
@@ -77,5 +129,7 @@ export async function POST(request: Request) {
       },
       { status: 500 }
     );
+  } finally {
+    clearTimeout(timeout);
   }
 }
