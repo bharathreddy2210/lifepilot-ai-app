@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 
@@ -12,6 +12,12 @@ export default function AIAgentPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
 
+  function newChat() {
+    if (loading) return;
+    setMessages([]);
+    setMessage("");
+  }
+
   async function sendMessage() {
     const text = message.trim();
 
@@ -19,10 +25,7 @@ export default function AIAgentPage() {
 
     setMessages((current) => [
       ...current,
-      {
-        role: "user",
-        content: text,
-      },
+      { role: "user", content: text },
     ]);
 
     setMessage("");
@@ -64,8 +67,7 @@ export default function AIAgentPage() {
         ...current,
         {
           role: "assistant",
-          content:
-            data.answer || "No answer received.",
+          content: data.answer || "No answer received.",
         },
       ]);
     } catch (error) {
@@ -88,13 +90,25 @@ export default function AIAgentPage() {
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
       <div className="mx-auto flex max-w-3xl flex-col">
 
-        <h1 className="text-3xl font-bold">
-          🤖 LifePilot AI
-        </h1>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">
+              🤖 LifePilot AI
+            </h1>
 
-        <p className="mt-2 text-slate-400">
-          Your personal productivity assistant
-        </p>
+            <p className="mt-2 text-slate-400">
+              Your personal productivity assistant
+            </p>
+          </div>
+
+          <button
+            onClick={newChat}
+            disabled={loading || messages.length === 0}
+            className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-medium transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            + New Chat
+          </button>
+        </div>
 
         <div className="mt-6 min-h-[500px] rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
@@ -102,6 +116,7 @@ export default function AIAgentPage() {
             <div className="flex min-h-[400px] items-center justify-center text-center text-slate-500">
               <div>
                 <div className="text-5xl">🤖</div>
+
                 <p className="mt-4">
                   Ask LifePilot anything about productivity,
                   study, planning, or time management.
@@ -140,7 +155,6 @@ export default function AIAgentPage() {
               </div>
             )}
           </div>
-
         </div>
 
         <div className="mt-4 flex gap-3">
