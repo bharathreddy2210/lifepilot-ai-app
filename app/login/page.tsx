@@ -11,51 +11,118 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [message, setMessage] = useState("");
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (loading || googleLoading) return;
+
     setLoading(true);
     setMessage("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    if (error) {
-      setMessage(error.message);
+      if (error) {
+        setMessage(`❌ ${error.message}`);
+        setLoading(false);
+        return;
+      }
+
+      if (!data.session) {
+        setMessage("❌ Login failed. No session was created.");
+        setLoading(false);
+        return;
+      }
+
+      setMessage("✅ Login successful! Opening dashboard...");
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch (error) {
+      console.error("Login error:", error);
+
+      setMessage(
+        error instanceof Error
+          ? `❌ ${error.message}`
+          : "❌ Unable to connect. Please try again."
+      );
+
       setLoading(false);
-      return;
     }
+  }
 
-    router.push("/dashboard");
-    router.refresh();
+  async function handleGoogleLogin() {
+    if (loading || googleLoading) return;
+
+    setGoogleLoading(true);
+    setMessage("");
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`,
+        },
+      });
+
+      if (error) {
+        setMessage(`❌ Google login failed: ${error.message}`);
+        setGoogleLoading(false);
+      }
+    } catch (error) {
+      console.error("Google login error:", error);
+
+      setMessage(
+        error instanceof Error
+          ? `❌ ${error.message}`
+          : "❌ Google login failed. Please try again."
+      );
+
+      setGoogleLoading(false);
+    }
   }
 
   async function handleResetPassword() {
-    if (!email.trim()) {
-      setMessage("Enter your email address first.");
+    const userEmail = email.trim();
+
+    if (!userEmail) {
+      setMessage("⚠️ Enter your email address first.");
       return;
     }
 
     setLoading(true);
     setMessage("");
 
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      email.trim(),
-      {
-        redirectTo: `${window.location.origin}/reset-password`,
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        userEmail,
+        {
+          redirectTo: `${window.location.origin}/reset-password`,
+        }
+      );
+
+      if (error) {
+        setMessage(`❌ ${error.message}`);
+      } else {
+        setMessage("✅ Password reset email sent. Check your inbox.");
       }
-    );
-
-    if (error) {
-      setMessage(error.message);
-    } else {
-      setMessage("Password reset email sent. Check your inbox.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? `❌ ${error.message}`
+          : "❌ Something went wrong."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   return (
@@ -88,21 +155,22 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               autoComplete="email"
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
+              disabled={loading || googleLoading}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500 disabled:opacity-50"
             />
           </div>
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <label className="block text-sm font-medium">
+              <label className="text-sm font-medium">
                 Password
               </label>
 
               <button
                 type="button"
                 onClick={handleResetPassword}
-                disabled={loading}
-                className="text-sm text-blue-400 hover:text-blue-300"
+                disabled={loading || googleLoading}
+                className="text-sm text-blue-400 hover:text-blue-300 disabled:opacity-50"
               >
                 Forgot password?
               </button>
@@ -115,14 +183,15 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
               autoComplete="current-password"
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500"
+              disabled={loading || googleLoading}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-500 disabled:opacity-50"
             />
           </div>
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-blue-600 py-3 font-semibold transition hover:bg-blue-700 disabled:opacity-50"
+            disabled={loading || googleLoading}
+            className="w-full rounded-xl bg-blue-600 py-3 font-semibold transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Please wait..." : "Login"}
           </button>
@@ -137,21 +206,29 @@ export default function LoginPage() {
 
         <div className="my-6 flex items-center gap-3">
           <div className="h-px flex-1 bg-slate-800" />
-          <span className="text-sm text-slate-500">OR</span>
+
+          <span className="text-sm text-slate-500">
+            OR
+          </span>
+
           <div className="h-px flex-1 bg-slate-800" />
         </div>
 
         <button
           type="button"
-          disabled
-          className="w-full rounded-xl border border-slate-700 py-3 font-medium text-slate-400"
+          onClick={handleGoogleLogin}
+          disabled={loading || googleLoading}
+          className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-700 bg-white py-3 font-medium text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Continue with Google
+          {googleLoading ? (
+            "Connecting to Google..."
+          ) : (
+            <>
+              <span className="text-lg">G</span>
+              Continue with Google
+            </>
+          )}
         </button>
-
-        <p className="mt-2 text-center text-xs text-slate-600">
-          Google login will be connected later.
-        </p>
 
         <p className="mt-6 text-center text-sm text-slate-400">
           Don&apos;t have an account?{" "}
