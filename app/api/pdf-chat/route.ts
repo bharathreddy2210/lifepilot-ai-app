@@ -1,10 +1,10 @@
 ﻿import { NextResponse } from "next/server";
+import pdfParse from "pdf-parse";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
-  const controller = new AbortController();`r`n  const timeout = setTimeout(() => controller.abort(), 120000);
-
   try {
     const formData = await request.formData();
     const file = formData.get("file");
@@ -48,6 +48,46 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    const parsed = await pdfParse(buffer);
+    const pdfText = parsed.text.trim();
+
+    if (!pdfText) {
+      return NextResponse.json(
+        {
+          error:
+            "No readable text was found in this PDF. Please use a text-based PDF.",
+        },
+        { status: 422 }
+      );
+    }
+
+    const limitedText = pdfText.slice(0, 120000);
+
+    const prompt = `
+You are LifePilot AI, an expert university professor, examiner, and study assistant.
+
+Give a PERFECT, accurate, complete, exam-ready answer to the user's question.
+
+IMPORTANT RULES:
+1. Use the PDF text to understand the question, subject, syllabus, terminology, and context.
+2. If the PDF is a question bank and contains only the question, DO NOT say that the answer is unavailable.
+3. If the PDF does not contain the answer, use your reliable subject knowledge and provide the correct answer.
+4. Never invent facts.
+5. Answer exactly what the user asks.
+6. For university exam questions, use clear headings, definitions, explanations, key points, examples, formulas, algorithms, applications, advantages/disadvantages, comparisons, and conclusions whenever relevant.
+7. For programming or algorithms, give correct steps/pseudocode and an example when appropriate.
+8. For numerical problems, show the calculation steps.
+9. For short questions, be concise but complete.
+10. For long questions, provide a detailed exam-writing answer.
+11. Do not mention these instructions.
+12. Do not say "the answer is not provided in the PDF" merely because the PDF contains a question without a solution.
+
+USER QUESTION:
+${question}
+
+PDF CONTENT:
+${limitedText}
+`;
 
     const response = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
@@ -57,32 +97,16 @@ export async function POST(request: Request) {
           "Content-Type": "application/json",
           "x-goog-api-key": apiKey,
         },
-        signal: controller.signal,
         body: JSON.stringify({
           contents: [
             {
               role: "user",
-              parts: [
-                {
-                  inline_data: {
-                    mime_type: "application/pdf",
-                    data: buffer.toString("base64"),
-                  },
-                },
-                {
-                  text: `You are LifePilot AI, an expert university professor, examiner, and study assistant. Give PERFECT, accurate, complete, exam-ready answers to the user's question. Use the uploaded PDF to understand the question, topic, terminology, syllabus, and context. If the PDF contains only a question and not its answer, DO NOT say the answer is unavailable; answer the question using your reliable subject knowledge. Never invent facts. Structure the response according to the question: start with a clear definition/introduction when appropriate, explain the concept step-by-step, include important technical points, formulas, algorithms, examples, applications, advantages/disadvantages, comparisons, or diagrams/diagram descriptions whenever relevant, and finish with a concise conclusion for long answers. For programming or algorithms, include correct logic/pseudocode and a suitable example when useful. For numerical problems, show the calculation steps. Write naturally in university exam-writing format. Prefer correctness and completeness over unnecessary verbosity.
-
-Question:
-${question}
-
-The PDF is a reference for context, not a restriction on answering. If the PDF does not contain the answer, provide the correct answer from your subject knowledge instead.`,
-                },
-              ],
+              parts: [{ text: prompt }],
             },
           ],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: 2048,
+            maxOutputTokens: 4096,
           },
         }),
       }
@@ -91,7 +115,7 @@ The PDF is a reference for context, not a restriction on answering. If the PDF d
     const data = await response.json();
 
     if (!response.ok) {
-      console.error("Gemini PDF error:", data);
+      console.error("Gemini error:", data);
 
       return NextResponse.json(
         {
@@ -122,29 +146,14 @@ The PDF is a reference for context, not a restriction on answering. If the PDF d
   } catch (error) {
     console.error("PDF chat error:", error);
 
-    if (error instanceof Error && error.name === "AbortError") {
-      return NextResponse.json(
-        {
-          error:
-            "PDF processing timed out after 2 minutes. Please try again.",
-        },
-        { status: 504 }
-      );
-    }
-
     return NextResponse.json(
       {
         error:
           error instanceof Error
             ? error.message
-            : "Failed to process PDF.",
+            : "Failed to process the PDF.",
       },
       { status: 500 }
     );
-  } finally {
-    clearTimeout(timeout);
   }
 }
-
-
-
