@@ -9,6 +9,7 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
+    const question = String(formData.get("question") || "").trim();
 
     if (!(file instanceof File)) {
       return NextResponse.json(
@@ -20,6 +21,13 @@ export async function POST(request: Request) {
     if (file.type !== "application/pdf") {
       return NextResponse.json(
         { error: "Only PDF files are supported." },
+        { status: 400 }
+      );
+    }
+
+    if (!question) {
+      return NextResponse.json(
+        { error: "Please enter a question." },
         { status: 400 }
       );
     }
@@ -63,14 +71,19 @@ export async function POST(request: Request) {
                   },
                 },
                 {
-                  text: "Read this PDF carefully. Give me a clear summary of the important topics, key points, definitions, and conclusions. Keep the answer organized and easy to understand.",
+                  text: `Answer the user's question using the uploaded PDF as the primary source.
+
+Question:
+${question}
+
+If the answer is not available in the PDF, clearly say that the information was not found in the uploaded PDF. Do not invent information.`,
                 },
               ],
             },
           ],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 2048,
           },
         }),
       }
@@ -133,4 +146,3 @@ export async function POST(request: Request) {
     clearTimeout(timeout);
   }
 }
-
