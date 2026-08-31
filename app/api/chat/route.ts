@@ -1,95 +1,6 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 
-function generateAnswer(message: string): string {
-  const text = message.toLowerCase();
-
-  if (
-    text.includes("study") ||
-    text.includes("exam") ||
-    text.includes("learn")
-  ) {
-    return `Here is a simple study plan:
-
-1. Choose one important topic.
-2. Study for 45 minutes.
-3. Take a 10-minute break.
-4. Practice questions for 30 minutes.
-5. Review what you learned for 15 minutes.
-
-Tip: Keep your phone away while studying and focus on one subject at a time.`;
-  }
-
-  if (
-    text.includes("time") ||
-    text.includes("schedule") ||
-    text.includes("routine")
-  ) {
-    return `Try this simple daily routine:
-
-• Morning — Plan your top 3 tasks.
-• Morning — Complete your most important task.
-• Afternoon — Study or work for 2 focused sessions.
-• Evening — Finish smaller tasks.
-• Night — Review your progress and plan tomorrow.
-
-Focus on your most important task first.`;
-  }
-
-  if (
-    text.includes("productivity") ||
-    text.includes("productive")
-  ) {
-    return `Here are 3 simple productivity rules:
-
-1. Pick your top 3 tasks.
-2. Work on one task at a time.
-3. Use 45 minutes of focused work followed by a short break.
-
-Start with the task that has the biggest impact.`;
-  }
-
-  if (
-    text.includes("goal") ||
-    text.includes("goals")
-  ) {
-    return `Use this goal method:
-
-1. Write the goal clearly.
-2. Set a deadline.
-3. Break it into small tasks.
-4. Complete one task every day.
-5. Review your progress every week.
-
-Small consistent progress is better than trying to do everything at once.`;
-  }
-
-  if (
-    text.includes("hello") ||
-    text.includes("hi") ||
-    text.includes("hey")
-  ) {
-    return `Hello! 👋 I'm LifePilot AI.
-
-I can help you with:
-• Study planning
-• Daily schedules
-• Productivity
-• Goals
-• Time management
-
-What would you like help with?`;
-  }
-
-  return `Here's a simple way to approach it:
-
-1. Clearly define what you want to achieve.
-2. Break it into smaller tasks.
-3. Choose the most important task.
-4. Work on it without distractions.
-5. Review your progress at the end of the day.
-
-Tell me more about your goal and I can help you create a practical plan.`;
-}
+export const runtime = "edge";
 
 export async function POST(request: Request) {
   try {
@@ -107,14 +18,112 @@ export async function POST(request: Request) {
       );
     }
 
-    const answer = generateAnswer(message);
+    const apiKey = process.env.GEMINI_API_KEY;
 
-    return NextResponse.json({ answer });
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "GEMINI_API_KEY is not configured." },
+        { status: 500 }
+      );
+    }
+
+    const controller = new AbortController();
+
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 15000);
+
+    try {
+      const response = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: `Answer this question directly and accurately. Keep the answer concise unless the user asks for detail.
+
+Question:
+${message}`,
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 512,
+            },
+          }),
+        }
+      );
+
+      clearTimeout(timeout);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error("Gemini error:", data);
+
+        return NextResponse.json(
+          {
+            error:
+              data?.error?.message ||
+              `Gemini API error (${response.status})`,
+          },
+          { status: response.status }
+        );
+      }
+
+      const answer =
+        data?.candidates?.[0]?.content?.parts
+          ?.map((part: { text?: string }) => part.text || "")
+          .join("")
+          .trim();
+
+      if (!answer) {
+        return NextResponse.json(
+          { error: "Gemini returned an empty answer." },
+          { status: 502 }
+        );
+      }
+
+      return NextResponse.json({ answer });
+    } catch (error) {
+      clearTimeout(timeout);
+
+      if (
+        error instanceof Error &&
+        error.name === "AbortError"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Gemini is taking too long. Please try again.",
+          },
+          { status: 504 }
+        );
+      }
+
+      throw error;
+    }
   } catch (error) {
-    console.error("AI Assistant error:", error);
+    console.error("Chat API error:", error);
 
     return NextResponse.json(
-      { error: "Something went wrong. Please try again." },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Something went wrong. Please try again.",
+      },
       { status: 500 }
     );
   }
